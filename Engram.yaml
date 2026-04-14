@@ -1,0 +1,204 @@
+apiVersion: catalog.bubustack.io/v1alpha1
+kind: EngramTemplate
+metadata:
+  name: map-reduce-adapter
+  annotations:
+    registry.bubustack.io/maturity: experimental
+spec:
+  version: 0.1.0
+  description: "Generic map/reduce adapter that fans out StoryRuns per item, stores outputs in shared storage, and optionally runs a reduce story."
+  image: ghcr.io/bubustack/map-reduce-adapter-engram:0.1.0
+  supportedModes:
+    - job
+  execution:
+    rbac:
+      rules:
+        - apiGroups:
+            - runs.bubustack.io
+          resources:
+            - storytriggers
+          verbs:
+            - create
+            - get
+        - apiGroups:
+            - runs.bubustack.io
+          resources:
+            - storyruns
+          verbs:
+            - get
+        - apiGroups:
+            - runs.bubustack.io
+          resources:
+            - stepruns
+          verbs:
+            - get
+            - list
+            - watch
+
+  configSchema:
+    type: object
+    properties:
+      defaultBatchSize:
+        type: integer
+        description: "Default number of items per batch when no map.batchSize is provided."
+        default: 100
+      defaultConcurrency:
+        type: integer
+        description: "Default max in-flight StoryRuns when no map.concurrency is provided."
+        default: 10
+      maxBatchSize:
+        type: integer
+        description: "Hard cap for batch size."
+        minimum: 0
+      maxConcurrency:
+        type: integer
+        description: "Hard cap for concurrency."
+        minimum: 0
+      defaultFailFast:
+        type: boolean
+        description: "Fail fast when a map item fails unless overridden."
+        default: true
+      defaultAllowFailures:
+        type: boolean
+        description: "Allow map failures without failing the adapter step."
+        default: false
+      defaultInlineResultsLimit:
+        type: integer
+        description: "Max items to inline in output.results (0 disables)."
+        default: 0
+      pollInterval:
+        type: string
+        description: "Polling interval for StoryRun completion (e.g., 2s, 10s)."
+        default: "2s"
+      defaultStoryRunTTLSeconds:
+        type: integer
+        description: "Default TTL for sub-story child resources."
+      defaultStoryRunRetentionSeconds:
+        type: integer
+        description: "Default retention for sub-story StoryRuns."
+    additionalProperties: false
+
+  inputSchema:
+    type: object
+    required:
+      - items
+      - map
+    properties:
+      items:
+        description: "Items to process (array or storage/configmap reference)."
+        anyOf:
+          - type: array
+          - type: string
+          - type: object
+            properties:
+              $bubuConfigMapRef:
+                type: object
+                properties:
+                  name: { type: string }
+                  namespace: { type: string }
+                  key: { type: string }
+                  format: { type: string }
+              $bubuStorageRef:
+                type: string
+            additionalProperties: false
+      context:
+        type: object
+        description: "Optional shared context passed to each map StoryRun."
+      inputs:
+        type: object
+        description: "Optional shared inputs passed to each map StoryRun."
+      map:
+        type: object
+        description: "Map stage configuration."
+        properties:
+          storyRef:
+            type: object
+            properties:
+              name: { type: string }
+              namespace: { type: string }
+          story:
+            type: object
+            description: "Inline Story spec (same shape as Story.spec)."
+            x-kubernetes-preserve-unknown-fields: true
+          inputs:
+            type: object
+            description: "Additional per-item inputs merged into the map payload."
+            x-kubernetes-preserve-unknown-fields: true
+          batchSize:
+            type: integer
+            minimum: 1
+          concurrency:
+            type: integer
+            minimum: 1
+          failFast:
+            type: boolean
+          allowFailures:
+            type: boolean
+          inlineResultsLimit:
+            type: integer
+            minimum: 0
+          pollInterval:
+            type: string
+          storyRunTTLSeconds:
+            type: integer
+          storyRunRetentionSeconds:
+            type: integer
+      reduce:
+        type: object
+        description: "Optional reduce stage configuration."
+        properties:
+          storyRef:
+            type: object
+            properties:
+              name: { type: string }
+              namespace: { type: string }
+          story:
+            type: object
+            description: "Inline Story spec for reduce stage."
+            x-kubernetes-preserve-unknown-fields: true
+          inputs:
+            type: object
+            description: "Additional inputs merged into the reduce payload."
+            x-kubernetes-preserve-unknown-fields: true
+          pollInterval:
+            type: string
+          storyRunTTLSeconds:
+            type: integer
+          storyRunRetentionSeconds:
+            type: integer
+
+  outputSchema:
+    type: object
+    properties:
+      manifest:
+        type: object
+        description: "Storage reference to the map manifest."
+        x-kubernetes-preserve-unknown-fields: true
+      stats:
+        type: object
+        properties:
+          total: { type: integer }
+          succeeded: { type: integer }
+          failed: { type: integer }
+      resultsPrefix:
+        type: string
+        description: "Storage prefix containing per-item outputs."
+      resultsIndex:
+        type: object
+        description: "Storage reference to the results index (per-item status/output refs)."
+        x-kubernetes-preserve-unknown-fields: true
+      results:
+        type: array
+        description: "Inline results (only when inlineResultsLimit allows; small runs only)."
+        items:
+          x-kubernetes-preserve-unknown-fields: true
+      reduce:
+        type: object
+        description: "Reduce stage result metadata."
+        properties:
+          storyRun: { type: string }
+          phase: { type: string }
+          outputRef:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          error: { type: string }
