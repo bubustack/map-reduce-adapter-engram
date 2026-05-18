@@ -6,7 +6,7 @@ require (
 	github.com/bubustack/bobrapet v0.1.13
 	github.com/bubustack/bubu-sdk-go v0.1.5
 	github.com/bubustack/core v0.1.6
-	k8s.io/apimachinery v0.36.0
+	k8s.io/apimachinery v0.36.1
 	k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 	sigs.k8s.io/yaml v1.6.0
 )
